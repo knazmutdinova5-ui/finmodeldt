@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Финансовая модель — Dialog Trade</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--brand:#a8ca65;--brand-dark:#6a9a2a;--brand-darker:#4a7010;--brand-bg:#f4f8ec;--brand-border:#d4e8a0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4e8;color:#1a1a1a;min-height:100vh}
+input[type=range]{accent-color:var(--brand-dark);cursor:pointer;height:4px;width:100%}
+input[type=number]{outline:none}
+input[type=number]:focus{border-color:var(--brand)!important;background:#fff!important}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:#c8dfa0;border-radius:4px}
+.layout{display:grid;grid-template-columns:420px 1fr;min-height:100vh}
+.left{background:#fff;border-right:1px solid var(--brand-border);overflow-y:auto;padding:1.25rem}
+.right{overflow-y:auto;padding:1.25rem;background:#f0f4e8}
+@media(max-width:900px){.layout{grid-template-columns:1fr}}
+.sec{font-size:10px;font-weight:700;color:var(--brand-dark);text-transform:uppercase;letter-spacing:.07em;margin:1.25rem 0 .625rem;display:flex;align-items:center;gap:6px}
+.sec::after{content:'';flex:1;height:.5px;background:var(--brand-border)}
+.card{background:#fff;border:1px solid var(--brand-border);border-radius:10px;padding:1rem;margin-bottom:.625rem}
+.row{display:flex;align-items:center;gap:6px;margin-bottom:7px}
+.lbl{font-size:11px;color:#555;min-width:130px;flex-shrink:0}
+.ni{width:100px;border:1px solid var(--brand-border);border-radius:6px;padding:3px 7px;font-size:12px;background:var(--brand-bg);color:#1a1a1a;text-align:right}
+.sv{font-size:11px;color:var(--brand-dark);font-weight:600;min-width:36px;text-align:right}
+.cv{font-size:11px;color:#c0392b;font-weight:500;min-width:70px;text-align:right}
+.tog{width:30px;height:17px;border-radius:9px;cursor:pointer;position:relative;flex-shrink:0;transition:background .2s}
+.tog::after{content:'';position:absolute;width:13px;height:13px;background:#fff;border-radius:50%;top:2px;transition:left .2s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.cc{background:#fff;border:1px solid var(--brand-border);border-radius:10px;padding:1rem;margin-bottom:.75rem}
+.ct{font-size:12px;font-weight:600;color:#3a5a10;margin-bottom:.75rem;display:flex;align-items:center;gap:6px}
+.kg{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.75rem}
+.kc{background:var(--brand-bg);border:1px solid var(--brand-border);border-radius:8px;padding:.625rem .75rem}
+.kl{font-size:10px;color:#6a8a3a;margin-bottom:3px;font-weight:500}
+.kv{font-size:16px;font-weight:700}
+.ks{font-size:10px;color:#888;margin-top:2px}
+.pl{display:flex;justify-content:space-between;font-size:12px;color:#555;padding:3px 0;border-bottom:.5px solid #edf3e0}
+.plb{font-weight:700;font-size:13px;border-bottom:none;padding-top:6px;margin-top:3px;border-top:1.5px solid var(--brand-border)}
+.bw{margin-bottom:5px}
+.dh{display:flex;align-items:center;gap:8px;margin-bottom:.75rem;padding-bottom:.5rem;border-bottom:1px solid var(--brand-border)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const {useState,useCallback,useEffect,useRef,createElement:h}=React;
+const DIRS=[
+  {id:"plant",name:"Растениеводство",icon:"🌱",color:"#639922"},
+  {id:"gen",  name:"Генетика",       icon:"🧬",color:"#1D9E75"},
+  {id:"dis",  name:"Дезинфекция",    icon:"💧",color:"#378ADD"},
+  {id:"equip",name:"Оборудование",   icon:"🔧",color:"#BA7517"}
+];
+const OPEX_FIXED=63500;
+const G="#3a6a00",R="#c0392b";
+
+function fmt(n,s){
+  const a=Math.abs(n);
+  if(a>=1e6)return(n/1e6).toFixed(s?1:2)+" млн ₽";
+  if(a>=1e3)return(Math.round(n/100)/10).toFixed(1)+" тыс ₽";
+  return Math.round(n)+" ₽";
+}
+function fp(n){return n.toFixed(1)+"%";}
+
+function Toggle({on,cb}){
+  return h("div",{className:"tog",onClick:cb,style:{background:on?"#a8ca65":"#ccc"}},
+    h("div",{style:{position:"absolute",width:13,height:13,background:"#fff",borderRadius:"50%",top:2,left:on?15:2,transition:"left .2s"}}));
+}
+function NR({label,value,onChange,step}){
+  return h("div",{className:"row"},
+    h("span",{className:"lbl"},label),
+    h("input",{type:"number",className:"ni",value:value||"",min:0,step:step||1000,
+      onChange:e=>onChange(parseFloat(e.target.value)||0),placeholder:"0"}),
+    h("span",{style:{fontSize:11,color:"#999"}},"₽"));
+}
+function SR({label,value,onChange,max,cv}){
+  return h("div",null,
+    h("div",{className:"row",style:{marginBottom:2}},
+      h("span",{className:"lbl"},label),
+      h("span",{className:"sv"},fp(value)),
+      cv!==undefined&&h("span",{className:"cv"},fmt(cv,true))
+    ),
+    h("input",{type:"range",min:0,max:max||20,step:0.1,value:value,
+      onChange:e=>onChange(parseFloat(e.target.value)),style:{marginBottom:7}}));
+}
+function PLR({label,value,bold,indent,topLine}){
+  const neg=value<0;
+  return h("div",{className:"pl"+(bold?" plb":""),style:{paddingLeft:indent?12:0,borderTop:topLine?"1.5px solid #e2e8e0":""}},
+    h("span",null,label),
+    h("span",{style:{color:bold?(value>=0?G:R):(neg?R:"#333"),fontWeight:bold?700:400}},fmt(value)));
+}
+function WFB({label,value,color,maxV}){
+  return h("div",{className:"bw"},
+    h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:11,color:"#555",marginBottom:2}},
+      h("span",null,label),h("span",{style:{fontWeight:600,color}},fmt(value,true))),
+    h("div",{style:{height:6,background:"#edf0eb",borderRadius:3,overflow:"hidden"}},
+      h("div",{style:{width:Math.round(Math.abs(value)/maxV*100)+"%",height:"100%",background:color,borderRadius:3,transition:"width .3s"}})));
+}
+
+function DonutChart({data,centerLabel}){
+  const ref=useRef();const ch=useRef();
+  useEffect(()=>{
+    if(!ref.current)return;
+    if(ch.current)ch.current.destroy();
+    const total=data.reduce((s,d)=>s+d.value,0);
+    if(total<=0)return;
+    ch.current=new Chart(ref.current,{
+      type:"doughnut",
+      data:{labels:data.map(d=>d.label),datasets:[{data:data.map(d=>d.value),backgroundColor:data.map(d=>d.color),borderWidth:2,borderColor:"#fff"}]},
+      options:{responsive:true,maintainAspectRatio:false,cutout:"65%",plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>{const p=(ctx.raw/total*100).toFixed(1);return ctx.label+": "+fmt(ctx.raw,true)+" ("+p+"%)"}}}}}
+    });
+    return()=>{if(ch.current)ch.current.destroy();};
+  },[data]);
+  const total=data.reduce((s,d)=>s+d.value,0);
+  return h("div",{style:{position:"relative",height:150}},
+    h("canvas",{ref}),
+    h("div",{style:{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",textAlign:"center",pointerEvents:"none"}},
+      h("div",{style:{fontSize:10,color:"#888"}},centerLabel||""),
+      h("div",{style:{fontSize:13,fontWeight:700}},fmt(total,true))));
+}
+
+function GroupedBar({dirs}){
+  const ref=useRef();const ch=useRef();
+  useEffect(()=>{
+    if(!ref.current||!dirs.length)return;
+    if(ch.current)ch.current.destroy();
+    ch.current=new Chart(ref.current,{
+      type:"bar",
+      data:{
+        labels:dirs.map(d=>d.name),
+        datasets:[
+          {label:"Выручка",data:dirs.map(d=>d.rev),backgroundColor:dirs.map(d=>d.color+"44"),borderColor:dirs.map(d=>d.color),borderWidth:1.5,borderRadius:4},
+          {label:"Валовая прибыль",data:dirs.map(d=>d.gross),backgroundColor:dirs.map(d=>d.color+"99"),borderColor:dirs.map(d=>d.color),borderWidth:1.5,borderRadius:4},
+          {label:"Чистая прибыль",data:dirs.map(d=>d.net),backgroundColor:dirs.map(d=>d.net>=0?d.color:"#E24B4A"),borderColor:dirs.map(d=>d.net>=0?d.color:"#991F1F"),borderWidth:1.5,borderRadius:4},
+        ]
+      },
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:true,position:"top",labels:{font:{size:10},boxWidth:10,padding:8}},
+          tooltip:{callbacks:{label:ctx=>ctx.dataset.label+": "+fmt(ctx.raw,true)}}},
+        scales:{x:{grid:{display:false},ticks:{font:{size:10}}},
+          y:{grid:{color:"#f0f0f0"},ticks:{font:{size:10},callback:v=>fmt(v,true)}}}}
+    });
+    return()=>{if(ch.current)ch.current.destroy();};
+  },[dirs]);
+  return h("div",{style:{position:"relative",height:190}},h("canvas",{ref}));
+}
+
+function BarChart({data}){
+  const ref=useRef();const ch=useRef();
+  useEffect(()=>{
+    if(!ref.current)return;
+    if(ch.current)ch.current.destroy();
+    ch.current=new Chart(ref.current,{
+      type:"bar",
+      data:{labels:data.map(d=>d.label),datasets:[{data:data.map(d=>d.value),backgroundColor:data.map(d=>d.color||"#639922"),borderRadius:4,borderSkipped:false}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>fmt(ctx.raw,true)}}},
+        scales:{x:{grid:{display:false},ticks:{font:{size:10}}},y:{grid:{color:"#f0f0f0"},ticks:{font:{size:10},callback:v=>fmt(v,true)}}}}
+    });
+    return()=>{if(ch.current)ch.current.destroy();};
+  },[data]);
+  return h("div",{style:{position:"relative",height:150}},h("canvas",{ref}));
+}
+
+function App(){
+  const [ndv,setNdv]=useState(20);
+  const [trans,setTrans]=useState(0);
+  const [autoC,setAutoC]=useState(0);
+  const [fuelPct,setFuelPct]=useState(3);
+  const [miscOpexPct,setMiscOpexPct]=useState(5);
+  const [reprPct,setReprPct]=useState(0.5);
+  const [mktPct,setMktPct]=useState(1);
+  const [tripPct,setTripPct]=useState(0.5);
+  const [adminFot,setAdminFot]=useState(0);
+  const [adminBonusPct,setAdminBonusPct]=useState(0);
+  const [insurance,setInsurance]=useState(0);
+  const [rentOffice,setRentOffice]=useState(0);
+  const [officeExp,setOfficeExp]=useState(0);
+  const [telecom,setTelecom]=useState(0);
+  const [software,setSoftware]=useState(0);
+  const [hrExp,setHrExp]=useState(0);
+  const [consult,setConsult]=useState(0);
+  const [taxPct,setTaxPct]=useState(6);
+  const [depr,setDepr]=useState(0);
+  const [leasing,setLeasing]=useState(0);
+  const [period,setPeriod]=useState("month");
+  const [dirs,setDirs]=useState(()=>{const d={};DIRS.forEach(x=>{d[x.id]={on:true,rev:0,cogs:30,fot:0,kpi:5};});return d;});
+  const updDir=useCallback((id,f,v)=>setDirs(p=>({...p,[id]:{...p[id],[f]:v}})),[]);
+  const togDir=useCallback((id)=>setDirs(p=>({...p,[id]:{...p[id],on:!p[id].on}})),[]);
+
+  const K=period==="year"?12:1;
+
+  // ---- РАСЧЁТЫ ----
+  let totRev=0,totNdvAmt=0,totCogs=0,totFot=0,totKpi=0;
+  const dc={};
+  DIRS.forEach(d=>{
+    const s=dirs[d.id];
+    if(!s.on){dc[d.id]={on:false,rev:0,cogs:0,fot:0,kpi:0};return;}
+    const rev=s.rev*K;
+    const ndvAmt=rev*ndv/100;
+    const cogs=rev*s.cogs/100;
+    const fot=s.fot*K;
+    const kpi=rev*s.kpi/100;
+    totRev+=rev;totNdvAmt+=ndvAmt;totCogs+=cogs;totFot+=fot;totKpi+=kpi;
+    dc[d.id]={on:true,rev,ndvAmt,cogs,fot,kpi};
+  });
+
+  const fuelAmt=totRev*fuelPct/100;
+  const miscOpexAmt=totRev*miscOpexPct/100;
+  const totalOpex=(OPEX_FIXED+trans+autoC)*K+fuelAmt+miscOpexAmt;
+
+  const reprAmt=totRev*reprPct/100;
+  const mktAmt=totRev*mktPct/100;
+  const tripAmt=totRev*tripPct/100;
+  const totalComm=reprAmt+mktAmt+tripAmt;
+
+  const adminBonusAmt=totRev*adminBonusPct/100;
+  const bankComm=totRev*0.005;
+  const totalAdmin=(adminFot+insurance+rentOffice+officeExp+telecom+software+hrExp+consult)*K+adminBonusAmt+bankComm;
+
+  // P&L каскад
+  const grossProfit=totRev-totNdvAmt-totCogs-totFot-totKpi-totalOpex;
+  const grossMargin=totRev?grossProfit/totRev*100:0;
+  const profitBT=grossProfit-totalComm-totalAdmin;
+  const profitBTMargin=totRev?profitBT/totRev*100:0;
+  const taxAmt=totRev*taxPct/100;
+  const opProfit=profitBT-taxAmt;
+  const opMargin=totRev?opProfit/totRev*100:0;
+  const miscBelow=totRev*0.003;
+  const totalBelow=depr*K+leasing*K+miscBelow;
+  const netProfit=opProfit-totalBelow;
+  const netMargin=totRev?netProfit/totRev*100:0;
+
+  // Прибыль по направлениям — распределяем ВСЕ расходы пропорционально
+  const dirResults=DIRS.map(d=>{
+    const d2=dc[d.id];
+    if(!d2||!d2.on||d2.rev<=0)return null;
+    const share=totRev>0?d2.rev/totRev:0;
+    const gross=d2.rev-d2.ndvAmt-d2.cogs-d2.fot-d2.kpi-totalOpex*share;
+    const pbt=gross-totalComm*share-totalAdmin*share;
+    const op=pbt-taxAmt*share;
+    const net=op-totalBelow*share;
+    return{...d,rev:d2.rev,share,
+      gross,grossMargin:d2.rev?gross/d2.rev*100:0,
+      net,netMargin:d2.rev?net/d2.rev*100:0};
+  }).filter(Boolean);
+
+  const revByDir=dirResults.map(d=>({label:d.name,value:d.rev,color:d.color}));
+  const costStruct=[
+    {label:"Себестоимость",value:totCogs,color:"#D85A30"},
+    {label:"ФОТ произв.",value:totFot,color:"#BA7517"},
+    {label:"КПИ",value:totKpi,color:"#888780"},
+    {label:"ОПР",value:totalOpex,color:"#5F5E5A"},
+    {label:"НДС",value:totNdvAmt,color:"#B4B2A9"},
+    {label:"Коммерческие",value:totalComm,color:"#7F77DD"},
+    {label:"Административные",value:totalAdmin,color:"#378ADD"},
+    {label:"Налоги",value:taxAmt,color:"#993C1D"},
+    {label:"Прочее",value:totalBelow,color:"#888"},
+  ].filter(i=>i.value>0);
+
+  const wfItems=[
+    {l:"Выручка (ТО)",v:totRev,color:"#639922"},
+    {l:"− НДС",v:totNdvAmt,color:"#B4B2A9"},
+    {l:"− Себестоимость",v:totCogs,color:"#D85A30"},
+    {l:"− ФОТ + КПИ",v:totFot+totKpi,color:"#BA7517"},
+    {l:"− ОПР",v:totalOpex,color:"#5F5E5A"},
+    {l:"= Валовая прибыль",v:grossProfit,color:grossProfit>=0?G:R},
+    {l:"− Коммерческие",v:totalComm,color:"#7F77DD"},
+    {l:"− Административные",v:totalAdmin,color:"#378ADD"},
+    {l:"= Прибыль до налогов",v:profitBT,color:profitBT>=0?G:R},
+    {l:"− Налог",v:taxAmt,color:"#993C1D"},
+    {l:"= Операц. прибыль",v:opProfit,color:opProfit>=0?G:R},
+    {l:"− Амортиз. и пр.",v:totalBelow,color:"#888"},
+    {l:"= Чистая прибыль",v:netProfit,color:netProfit>=0?G:R},
+  ];
+  const wfMax=Math.max(...wfItems.map(i=>Math.abs(i.v)),1);
+
+  // ---- ЛЕВАЯ ПАНЕЛЬ ----
+  const left=h("div",{className:"left"},
+    h("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:"1rem",paddingBottom:"1rem",borderBottom:"1px solid #edf0eb"}},
+      h("img",{src:"https://dialog-trade.ru/local/templates/main/img/assets/header/logo.svg",
+        alt:"Dialog Trade",style:{height:32,maxWidth:120,objectFit:"contain",flexShrink:0},
+        onError:e=>{e.target.style.display="none";}}),
+      h("div",{style:{flex:1}},
+        h("div",{style:{fontSize:14,fontWeight:700,color:"#2d5a00"}},"Финансовая модель"),
+        h("div",{style:{fontSize:10,color:"#6a8a3a"}})
+      ),
+      h("div",{style:{display:"flex",background:"#f0f2ef",borderRadius:8,padding:2,gap:2}},
+        h("button",{onClick:()=>setPeriod("month"),style:{padding:"4px 10px",fontSize:11,fontWeight:600,border:"none",borderRadius:6,cursor:"pointer",background:period==="month"?"#fff":"transparent",color:period==="month"?"#4a7010":"#888",boxShadow:period==="month"?"0 1px 3px rgba(0,0,0,.1)":"none"}},"Месяц"),
+        h("button",{onClick:()=>setPeriod("year"),style:{padding:"4px 10px",fontSize:11,fontWeight:600,border:"none",borderRadius:6,cursor:"pointer",background:period==="year"?"#a8ca65":"transparent",color:period==="year"?"#fff":"#888"}},"Год")
+      )
+    ),
+    h("div",{className:"sec"},"НДС"),
+    h("div",{className:"row"},
+      h("span",{className:"lbl"},"Ставка НДС"),
+      h("input",{type:"range",min:0,max:30,step:1,value:ndv,onChange:e=>setNdv(+e.target.value),style:{flex:1}}),
+      h("span",{className:"sv"},ndv+"%")
+    ),
+    h("div",{className:"sec"},"📦 Направления"),
+    ...DIRS.map(d=>{
+      const s=dirs[d.id];
+      return h("div",{key:d.id,className:"card",style:{opacity:s.on?1:0.6}},
+        h("div",{className:"dh"},
+          h("span",{style:{fontSize:14}},d.icon),
+          h("span",{style:{fontSize:13,fontWeight:600,flex:1}},d.name),
+          h(Toggle,{on:s.on,cb:()=>togDir(d.id)})
+        ),
+        s.on&&h("div",null,
+          h(NR,{label:"Выручка (с НДС)",value:s.rev,onChange:v=>updDir(d.id,"rev",v),step:10000}),
+          h("div",{className:"row"},h("span",{className:"lbl"},"Себестоимость"),h("input",{type:"range",min:0,max:100,step:1,value:s.cogs,onChange:e=>updDir(d.id,"cogs",+e.target.value),style:{flex:1}}),h("span",{className:"sv"},s.cogs+"%")),
+          h(NR,{label:"ФОТ",value:s.fot,onChange:v=>updDir(d.id,"fot",v)}),
+          h("div",{className:"row"},h("span",{className:"lbl"},"КПИ менеджерам"),h("input",{type:"range",min:0,max:30,step:0.5,value:s.kpi,onChange:e=>updDir(d.id,"kpi",+e.target.value),style:{flex:1}}),h("span",{className:"sv"},s.kpi+"%"))
+        )
+      );
+    }),
+    h("div",{className:"sec"},"🏭 ОПР"),
+    h(NR,{label:"Транспорт/логистика",value:trans,onChange:setTrans}),
+    h(NR,{label:"Содержание автопарка",value:autoC,onChange:setAutoC}),
+    h(SR,{label:"Топливо",value:fuelPct,onChange:setFuelPct,cv:fuelAmt}),
+    h("div",{className:"row"},h("span",{className:"lbl"},"Аренда склада"),h("span",{style:{fontSize:12,color:"#4a7010",fontWeight:600,marginLeft:"auto"}},(30000*K).toLocaleString("ru-RU")+" ₽")),
+    h("div",{className:"row"},h("span",{className:"lbl"},"Анализы кормов"),h("span",{style:{fontSize:12,color:"#4a7010",fontWeight:600,marginLeft:"auto"}},(10000*K).toLocaleString("ru-RU")+" ₽")),
+    h("div",{className:"row"},h("span",{className:"lbl"},"ТБО"),h("span",{style:{fontSize:12,color:"#4a7010",fontWeight:600,marginLeft:"auto"}},(1500*K).toLocaleString("ru-RU")+" ₽")),
+    h("div",{className:"row"},h("span",{className:"lbl"},"Коммунальные"),h("span",{style:{fontSize:12,color:"#4a7010",fontWeight:600,marginLeft:"auto"}},(22000*K).toLocaleString("ru-RU")+" ₽")),
+    h(SR,{label:"Прочие непредвид.",value:miscOpexPct,onChange:setMiscOpexPct,cv:miscOpexAmt}),
+    h("div",{className:"sec"},"📢 Коммерческие"),
+    h(SR,{label:"Представительские",value:reprPct,onChange:setReprPct,max:10,cv:reprAmt}),
+    h(SR,{label:"Маркетинг",value:mktPct,onChange:setMktPct,max:15,cv:mktAmt}),
+    h(SR,{label:"Командировочные",value:tripPct,onChange:setTripPct,max:10,cv:tripAmt}),
+    h("div",{className:"sec"},"🏢 Административные"),
+    h(NR,{label:"ФОТ адм. персонал",value:adminFot,onChange:setAdminFot}),
+    h(SR,{label:"Премии адм. (% ТО)",value:adminBonusPct,onChange:setAdminBonusPct,max:30,cv:adminBonusAmt}),
+    h(NR,{label:"Страховые / НДФЛ",value:insurance,onChange:setInsurance}),
+    h(NR,{label:"Аренда офиса",value:rentOffice,onChange:setRentOffice}),
+    h(NR,{label:"Содержание офиса",value:officeExp,onChange:setOfficeExp}),
+    h(NR,{label:"Связь и интернет",value:telecom,onChange:setTelecom}),
+    h(NR,{label:"Программное обесп.",value:software,onChange:setSoftware}),
+    h(NR,{label:"Расходы на персонал",value:hrExp,onChange:setHrExp}),
+    h(NR,{label:"Консультационные",value:consult,onChange:setConsult}),
+    h("div",{className:"row"},h("span",{className:"lbl"},"Комиссия банка 0.5%"),h("span",{style:{fontSize:12,color:R,fontWeight:600,marginLeft:"auto"}},fmt(bankComm,true))),
+    h("div",{className:"sec"},"💰 Налоги и прочее"),
+    h(SR,{label:"Налог (% от ТО)",value:taxPct,onChange:setTaxPct,max:30,cv:taxAmt}),
+    h(NR,{label:"Амортизация",value:depr,onChange:setDepr}),
+    h(NR,{label:"Проценты по лизингу",value:leasing,onChange:setLeasing}),
+    h("div",{className:"row"},h("span",{className:"lbl"},"Проч. непредвид. 0.3%"),h("span",{style:{fontSize:12,color:R,fontWeight:600,marginLeft:"auto"}},fmt(miscBelow,true)))
+  );
+
+  // ---- ПРАВАЯ ПАНЕЛЬ ----
+  const right=h("div",{className:"right"},
+
+    // Бейдж периода
+    h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:".625rem"}},
+      h("span",{style:{fontSize:12,fontWeight:600,color:"#555"}},"Дашборд"),
+      h("span",{style:{fontSize:11,padding:"3px 10px",background:period==="year"?"#a8ca65":"#eef4e0",color:period==="year"?"#fff":"#666",borderRadius:20,fontWeight:600}},period==="year"?"Годовой прогноз":"Месячный план")
+    ),
+
+    // KPI карточки
+    h("div",{className:"kg"},
+      h("div",{className:"kc"},
+        h("div",{className:"kl"},"Выручка (ТО)"),
+        h("div",{className:"kv"},fmt(totRev,true)),
+        h("div",{className:"ks"},"НДС к уплате: "+fmt(totNdvAmt,true))
+      ),
+      h("div",{className:"kc",style:{background:grossProfit>=0?"#eef6d8":"#fdecea"}},
+        h("div",{className:"kl"},"Валовая прибыль"),
+        h("div",{className:"kv",style:{color:grossProfit>=0?G:R}},fmt(grossProfit,true)),
+        h("div",{className:"ks"},"Маржа: "+fp(grossMargin))
+      ),
+      h("div",{className:"kc",style:{background:opProfit>=0?"#eef6d8":"#fdecea"}},
+        h("div",{className:"kl"},"Операц. прибыль"),
+        h("div",{className:"kv",style:{color:opProfit>=0?G:R}},fmt(opProfit,true)),
+        h("div",{className:"ks"},"Маржа: "+fp(opMargin))
+      ),
+      h("div",{className:"kc",style:{background:netProfit>=0?"#eef6d8":"#fdecea"}},
+        h("div",{className:"kl"},"Чистая прибыль"),
+        h("div",{className:"kv",style:{color:netProfit>=0?G:R}},fmt(netProfit,true)),
+        h("div",{className:"ks"},"Маржа: "+fp(netMargin))
+      )
+    ),
+
+    // 1. Пончик — структура выручки по направлениям
+    revByDir.length>0&&h("div",{className:"cc"},
+      h("div",{className:"ct"},"🥧 Структура выручки по направлениям"),
+      h("div",{style:{display:"grid",gridTemplateColumns:"160px 1fr",gap:16,alignItems:"center"}},
+        h(DonutChart,{data:revByDir,centerLabel:"Выручка"}),
+        h("div",null,...revByDir.map(({label,value,color})=>{
+          const total=revByDir.reduce((s,d)=>s+d.value,0);
+          const pct=total>0?value/total*100:0;
+          return h("div",{key:label,style:{marginBottom:6}},
+            h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}},
+              h("span",{style:{display:"flex",alignItems:"center",gap:4}},
+                h("span",{style:{width:8,height:8,borderRadius:2,background:color,display:"inline-block"}}),label),
+              h("span",{style:{fontWeight:600,color}},pct.toFixed(0)+"%")
+            ),
+            h("div",{style:{height:7,background:"#edf0eb",borderRadius:4,overflow:"hidden"}},
+              h("div",{style:{width:pct+"%",height:"100%",background:color,borderRadius:4,transition:"width .3s"}})),
+            h("div",{style:{fontSize:10,color:"#888",marginTop:1}},fmt(value,true))
+          );
+        }))
+      )
+    ),
+
+    // 2. Пончик — структура расходов
+    costStruct.length>0&&h("div",{className:"cc"},
+      h("div",{className:"ct"},"📊 Структура расходов"),
+      h("div",{style:{display:"grid",gridTemplateColumns:"160px 1fr",gap:16,alignItems:"center"}},
+        h(DonutChart,{data:costStruct,centerLabel:"Расходы"}),
+        h("div",null,...costStruct.map(({label,value,color})=>{
+          const total=costStruct.reduce((s,d)=>s+d.value,0);
+          const pct=total>0?value/total*100:0;
+          return h("div",{key:label,style:{marginBottom:5}},
+            h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:2}},
+              h("span",{style:{display:"flex",alignItems:"center",gap:4}},
+                h("span",{style:{width:8,height:8,borderRadius:2,background:color,display:"inline-block"}}),label),
+              h("span",null,pct.toFixed(0)+"%")
+            ),
+            h("div",{style:{height:6,background:"#edf0eb",borderRadius:3,overflow:"hidden"}},
+              h("div",{style:{width:pct+"%",height:"100%",background:color,borderRadius:3}}))
+          );
+        }))
+      )
+    ),
+
+    // 3. Пончик — выручка vs расходы vs прибыль
+    totRev>0&&h("div",{className:"cc"},
+      h("div",{className:"ct"},"🍩 Выручка / расходы / прибыль"),
+      h("div",{style:{display:"grid",gridTemplateColumns:"160px 1fr",gap:16,alignItems:"center"}},
+        h(DonutChart,{data:[
+          {label:"Чистая прибыль",value:Math.max(netProfit,0),color:"#3B6D11"},
+          {label:"Все расходы",value:totCogs+totFot+totKpi+totalOpex+totalComm+totalAdmin+taxAmt+totalBelow,color:"#D85A30"},
+          {label:"НДС",value:totNdvAmt,color:"#B4B2A9"},
+        ].filter(i=>i.value>0),centerLabel:"ТО"}),
+        h("div",null,
+          ...[
+            {label:"Выручка (ТО)",value:totRev,color:"#639922"},
+            {label:"НДС к уплате",value:totNdvAmt,color:"#B4B2A9"},
+            {label:"Все расходы",value:totCogs+totFot+totKpi+totalOpex+totalComm+totalAdmin+taxAmt+totalBelow,color:"#D85A30"},
+            {label:"Чистая прибыль",value:netProfit,color:netProfit>=0?"#3B6D11":"#991F1F"},
+          ].map(({label,value,color})=>
+            h("div",{key:label,style:{marginBottom:6}},
+              h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:11}},
+                h("span",{style:{display:"flex",alignItems:"center",gap:4}},
+                  h("span",{style:{width:8,height:8,borderRadius:2,background:color,display:"inline-block"}}),label),
+                h("span",{style:{fontWeight:600,color}},fmt(value,true))
+              )
+            )
+          )
+        )
+      )
+    ),
+
+    // 4. Сравнение направлений
+    dirResults.length>0&&h("div",{className:"cc"},
+      h("div",{className:"ct"},"💡 Сравнение направлений — выручка, прибыль, маржа"),
+      h(GroupedBar,{dirs:dirResults.map(d=>({...d,net:d.net}))}),
+      h("table",{style:{width:"100%",borderCollapse:"collapse",fontSize:12,marginTop:12}},
+        h("thead",null,
+          h("tr",{style:{borderBottom:"1.5px solid #e2e8e0"}},
+            ...[["Направление","left"],["Выручка","right"],["Валовая","right"],["Вал.%","right"],["Чистая","right"],["Чист.%","right"],["","center"]].map(([t,a])=>
+              h("th",{key:t,style:{padding:"4px 6px",textAlign:a,fontSize:10,fontWeight:600,color:"#888"}},t)
+            )
+          )
+        ),
+        h("tbody",null,
+          ...[...dirResults].sort((a,b)=>b.netMargin-a.netMargin).map((d,i)=>{
+            const medal=["🥇","🥈","🥉"][i]||"";
+            const bC=d.netMargin>=15?"#27500A":d.netMargin>=8?"#856404":"#991F1F";
+            const bBg=d.netMargin>=15?"#EAF3DE":d.netMargin>=8?"#FFF3CD":"#FCEBEB";
+            return h("tr",{key:d.id,style:{background:i%2===0?"#f7faf0":"#fff",borderBottom:"0.5px solid #f0f0f0"}},
+              h("td",{style:{padding:"6px 6px"}},h("span",{style:{fontSize:13,marginRight:4}},d.icon),d.name),
+              h("td",{style:{textAlign:"right",padding:"6px 6px"}},fmt(d.rev,true)),
+              h("td",{style:{textAlign:"right",padding:"6px 6px",color:d.gross>=0?G:R,fontWeight:600}},fmt(d.gross,true)),
+              h("td",{style:{textAlign:"right",padding:"6px 6px"}},
+                h("span",{style:{fontSize:11,fontWeight:600,padding:"1px 5px",borderRadius:4,
+                  background:d.grossMargin>=20?"#EAF3DE":d.grossMargin>=10?"#FFF3CD":"#FCEBEB",
+                  color:d.grossMargin>=20?"#27500A":d.grossMargin>=10?"#856404":"#991F1F"}},fp(d.grossMargin))
+              ),
+              h("td",{style:{textAlign:"right",padding:"6px 6px",color:d.net>=0?G:R,fontWeight:700}},fmt(d.net,true)),
+              h("td",{style:{textAlign:"right",padding:"6px 6px"}},
+                h("span",{style:{fontSize:11,fontWeight:700,padding:"1px 5px",borderRadius:4,background:bBg,color:bC}},fp(d.netMargin))
+              ),
+              h("td",{style:{textAlign:"center",padding:"6px 6px",fontSize:14}},medal)
+            );
+          })
+        )
+      )
+    ),
+
+    // 5. Каскад P&L
+    h("div",{className:"cc"},
+      h("div",{className:"ct"},"🌊 Каскад P&L"),
+      ...wfItems.map(({l,v,color})=>h(WFB,{key:l,label:l,value:v,color,maxV:wfMax}))
+    ),
+
+    // 6. Полный P&L
+    h("div",{className:"cc"},
+      h("div",{className:"ct"},"📋 Отчёт о прибылях и убытках"),
+      h(PLR,{label:"Выручка (ТО)",value:totRev}),
+      h(PLR,{label:"− НДС ("+ndv+"% от ТО)",value:-totNdvAmt,indent:true}),
+      h(PLR,{label:"− Себестоимость",value:-totCogs,indent:true}),
+      h(PLR,{label:"− ФОТ производственный",value:-totFot,indent:true}),
+      h(PLR,{label:"− КПИ менеджерам",value:-totKpi,indent:true}),
+      h(PLR,{label:"− ОПР",value:-totalOpex,indent:true}),
+      h(PLR,{label:"Валовая прибыль",value:grossProfit,bold:true}),
+      h("div",{style:{fontSize:10,color:"#888",textAlign:"right",marginBottom:4}},"Маржа: "+fp(grossMargin)),
+      h(PLR,{label:"− Коммерческие расходы",value:-totalComm,indent:true}),
+      h(PLR,{label:"− Административные расходы",value:-totalAdmin,indent:true}),
+      h(PLR,{label:"Прибыль до налогообложения",value:profitBT,bold:true}),
+      h("div",{style:{fontSize:10,color:"#888",textAlign:"right",marginBottom:4}},"Маржа: "+fp(profitBTMargin)),
+      h(PLR,{label:"− Налог ("+fp(taxPct)+")",value:-taxAmt,indent:true}),
+      h(PLR,{label:"Операционная прибыль",value:opProfit,bold:true}),
+      h("div",{style:{fontSize:10,color:"#888",textAlign:"right",marginBottom:4}},"Маржа: "+fp(opMargin)),
+      h(PLR,{label:"− Амортизация",value:-(depr*K),indent:true}),
+      h(PLR,{label:"− Проценты по лизингу",value:-(leasing*K),indent:true}),
+      h(PLR,{label:"− Прочие (0.3%)",value:-miscBelow,indent:true}),
+      h(PLR,{label:"Чистая прибыль",value:netProfit,bold:true}),
+      h("div",{style:{fontSize:10,color:"#888",textAlign:"right",marginTop:2}},"Чистая маржа: "+fp(netMargin))
+    ),
+
+    h("div",{style:{textAlign:"center",fontSize:11,color:"#aaa",padding:"1rem 0"}},"Dialog Trade · Финансовая модель · все расчёты в браузере")
+  );
+
+  return h("div",{className:"layout"},left,right);
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(h(App));
+</script>
+</body>
+</html>
